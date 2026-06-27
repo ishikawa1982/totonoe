@@ -177,6 +177,3 @@ Start-Process ".\totonoe.html"
 - [ ] 図表番号の自動付与
 - [ ] 図表記法（Mermaid 等）のレンダリング
 
----
-
-詳細は [プロジェクトの README](#readme) と [変更履歴](#changelog) を参照してください。不明点は社内チャットまで。
