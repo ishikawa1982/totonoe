@@ -1,0 +1,1319 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ととのえ — Markdown 自動整形</title>
+
+<!-- 描画ライブラリ（cdnjs） -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.11/purify.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" defer></script>
+
+<!-- ツールの外観 -->
+<style>
+:root{
+  --desk:#E7E4DC; --panel:#FCFBF8; --panel-2:#F5F3EC;
+  --ink:#1C1B18; --ink-2:#56544D; --ink-3:#8B887E;
+  --line:#E2DED4; --line-2:#D2CCBF;
+  --indigo:#2A4C70; --indigo-deep:#1F3A56; --shu:#C24A30;
+  --sans:"Hiragino Kaku Gothic ProN","Hiragino Sans","BIZ UDPGothic","Yu Gothic","YuGothic",Meiryo,"Noto Sans JP",system-ui,sans-serif;
+  --serif:"Hiragino Mincho ProN","BIZ UDPMincho","Yu Mincho","YuMincho","Noto Serif JP",serif;
+  --maru:"Hiragino Maru Gothic ProN","Hiragino Maru Gothic Pro","Rounded Mplus 1c","BIZ UDPGothic","Yu Gothic","Noto Sans JP",sans-serif;
+  --ud:"BIZ UDPGothic","BIZ UDGothic",Meiryo,"Hiragino Sans","Yu Gothic","Noto Sans JP",sans-serif;
+  --kyokasho:"UD Digi Kyokasho NP-R","UD Digi Kyokasho NK-R","UD Digi Kyokasho N-R","Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif;
+  --mono:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  --radius:10px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--desk); color:var(--ink);
+  font-family:var(--sans); font-size:14px; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit}
+:focus-visible{outline:2px solid var(--indigo); outline-offset:2px; border-radius:4px}
+
+/* ヘッダ */
+.app-header{
+  height:56px; display:flex; align-items:center; gap:14px;
+  padding:0 20px; background:var(--panel);
+  border-bottom:1px solid var(--line); position:sticky; top:0; z-index:30;
+}
+.brand{display:flex; align-items:baseline; gap:10px}
+.brand .mark{
+  width:11px; height:11px; background:var(--shu); display:inline-block;
+  transform:translateY(1px);
+}
+.brand .name{
+  font-family:var(--serif); font-size:22px; letter-spacing:.14em;
+  font-weight:600; color:var(--ink);
+}
+.brand .sub{
+  font-size:11.5px; color:var(--ink-3); letter-spacing:.12em;
+  border-left:1px solid var(--line-2); padding-left:12px;
+}
+.app-header .hint{margin-left:auto; font-size:11.5px; color:var(--ink-3)}
+
+/* 本体 2カラム */
+.app-main{
+  display:grid; grid-template-columns:384px 1fr;
+  height:calc(100% - 56px);
+}
+.pane{overflow:auto}
+.pane-input{
+  background:var(--panel); border-right:1px solid var(--line);
+  padding:22px 20px 40px; display:flex; flex-direction:column; gap:18px;
+}
+.pane-output{background:var(--desk); padding:26px 26px 0; position:relative}
+
+/* 入力 */
+.field{display:flex; flex-direction:column; gap:9px}
+.lbl{font-size:12px; color:var(--ink-2); letter-spacing:.04em; font-weight:600}
+.input{
+  width:100%; min-height:280px; resize:vertical;
+  padding:14px 15px; border:1px solid var(--line-2); border-radius:var(--radius);
+  background:#fff; color:var(--ink); font-family:var(--mono);
+  font-size:12.5px; line-height:1.7; transition:border-color .15s, box-shadow .15s;
+}
+.input::placeholder{color:#b6b2a7}
+.input:focus{border-color:var(--indigo); box-shadow:0 0 0 3px rgba(42,76,112,.10)}
+.input.drag{border-color:var(--shu); box-shadow:0 0 0 3px rgba(194,74,48,.14); background:#fffaf8}
+.filerow{display:flex; gap:8px; flex-wrap:wrap}
+
+/* ボタン */
+.btn{
+  border:1px solid transparent; border-radius:9px; cursor:pointer;
+  font-weight:600; letter-spacing:.03em; transition:background .15s,border-color .15s,color .15s,transform .05s;
+  padding:12px 16px; font-size:13.5px;
+}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--indigo); color:#fff}
+.btn-primary:hover{background:var(--indigo-deep)}
+.btn-primary[disabled]{background:#9aa6b3; cursor:default}
+.btn-ghost{background:transparent; border-color:var(--line-2); color:var(--ink-2)}
+.btn-ghost:hover{border-color:var(--ink-3); color:var(--ink)}
+.btn-sm{padding:7px 12px; font-size:12px; font-weight:600}
+label.btn{display:inline-flex; align-items:center}
+
+.status{min-height:18px; font-size:12px; color:var(--ink-2)}
+.status.err{color:#b23b22}
+.status.warn{color:#9a6a14}
+.status.info{color:var(--ink-2)}
+
+/* 微調整 */
+.tune{border-top:1px solid var(--line); padding-top:16px; display:flex; flex-direction:column; gap:12px}
+.tune-title{font-size:12px; font-weight:700; color:var(--ink-2); letter-spacing:.06em}
+.tune-title span{font-weight:400; color:var(--ink-3)}
+.tune-row{display:flex; align-items:flex-start; gap:12px}
+.tune-k{font-size:12px; color:var(--ink-3); width:36px; flex:none; padding-top:7px}
+.fontpicker{display:flex; gap:6px; flex-wrap:wrap}
+.fpill{border:1px solid var(--line-2); background:#fff; color:var(--ink-2); padding:6px 11px; font-size:12px; border-radius:7px; cursor:pointer; line-height:1.2}
+.fpill:hover{border-color:var(--ink-3); color:var(--ink)}
+.fpill.is-on{background:var(--indigo); color:#fff; border-color:var(--indigo)}
+.swatches{display:flex; gap:8px; flex-wrap:wrap; align-items:center; max-width:320px}
+.sw-b{
+  width:24px; height:24px; border-radius:50%; cursor:pointer; padding:0;
+  background:var(--c); border:2px solid #fff; box-shadow:0 0 0 1px var(--line-2);
+}
+.sw-b:hover{box-shadow:0 0 0 2px var(--line-2)}
+.sw-b.is-on{box-shadow:0 0 0 2px var(--c)}
+.sw-custom{
+  position:relative; overflow:hidden; border:2px solid #fff; box-shadow:0 0 0 1px var(--line-2);
+  background:conic-gradient(#d33,#e8a33d,#3aa35a,#2f7fd6,#7a4fd6,#d33);
+}
+.sw-custom::after{content:"＋"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#fff; font-size:13px; font-weight:700; text-shadow:0 0 2px rgba(0,0,0,.55); pointer-events:none}
+.sw-custom input{position:absolute; left:-6px; top:-6px; width:40px; height:40px; opacity:0; cursor:pointer; border:none; padding:0}
+.tune-note{font-size:11px; color:var(--ink-3); line-height:1.6; margin:2px 0 0}
+/* テーマのカスタムドロップダウン（候補に説明文を併記）*/
+.cdrop{position:relative; flex:1; min-width:0}
+.cdrop-btn{
+  width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px;
+  border:1px solid var(--line-2); border-radius:8px; background:#fff; color:var(--ink);
+  font-family:inherit; font-size:12.5px; padding:7px 10px; cursor:pointer; text-align:left;
+  transition:border-color .15s, box-shadow .15s;
+}
+.cdrop-btn:hover:not(:disabled){border-color:var(--ink-3)}
+.cdrop-btn[aria-expanded="true"]{border-color:var(--indigo); box-shadow:0 0 0 3px rgba(42,76,112,.1)}
+.cdrop-btn:disabled{opacity:.45; cursor:default}
+.cdrop-caret{color:var(--ink-3); font-size:11px; flex:none; transition:transform .15s}
+.cdrop-btn[aria-expanded="true"] .cdrop-caret{transform:rotate(180deg)}
+.cdrop-list{
+  position:absolute; z-index:40; top:calc(100% + 4px); left:0; right:0; margin:0; padding:5px;
+  list-style:none; max-height:330px; overflow:auto; background:#fff;
+  border:1px solid var(--line-2); border-radius:10px; box-shadow:0 12px 32px rgba(40,35,20,.18);
+}
+.cdrop-opt{padding:8px 10px; border-radius:7px; cursor:pointer; display:flex; flex-direction:column; gap:2px}
+.cdrop-opt:hover, .cdrop-opt.active{background:var(--panel-2)}
+.cdrop-opt[aria-selected="true"]{background:rgba(42,76,112,.08)}
+.cdrop-opt-name{font-size:12.5px; font-weight:600; color:var(--ink)}
+.cdrop-opt[aria-selected="true"] .cdrop-opt-name{color:var(--indigo)}
+.cdrop-opt-desc{font-size:11px; color:var(--ink-3); line-height:1.5}
+.seg{display:inline-flex; border:1px solid var(--line-2); border-radius:8px; overflow:hidden}
+.seg-b{border:none; background:#fff; color:var(--ink-2); padding:7px 16px; font-size:12.5px; cursor:pointer; font-family:inherit; transition:background .12s, color .12s}
+.seg-b:hover:not(:disabled){background:var(--panel-2)}
+.seg-b.is-on{background:var(--indigo); color:#fff}
+.seg-b:disabled{opacity:.45; cursor:default}
+
+/* 出力：空状態 */
+.empty{
+  max-width:560px; margin:60px auto 0; text-align:center; color:var(--ink-3);
+}
+.empty-mark{
+  width:64px; height:64px; margin:0 auto 18px; border-radius:14px;
+  background:var(--panel); border:1px solid var(--line);
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--serif); font-size:30px; color:var(--indigo); letter-spacing:.05em;
+}
+.empty-t{font-size:15px; color:var(--ink-2); margin:0 0 6px; font-weight:600}
+.empty-s{font-size:13px; margin:0 0 16px}
+
+/* 出力：整形レポート */
+.spec{
+  max-width:840px; margin:0 auto 18px; display:flex; gap:0;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  overflow:hidden; box-shadow:0 1px 2px rgba(40,35,20,.04);
+}
+.spec-tick{width:5px; flex:none; background:var(--shu)}
+.spec-main{padding:14px 18px; flex:1; min-width:0}
+.spec-head{display:flex; align-items:center; gap:10px; margin-bottom:6px}
+.spec-kicker{font-family:var(--serif); font-size:12.5px; letter-spacing:.18em; color:var(--ink-2)}
+.spec-tag{font-size:10.5px; padding:2px 8px; border-radius:20px; font-weight:700; letter-spacing:.05em}
+.spec-tag.is-ai{background:rgba(42,76,112,.12); color:var(--indigo)}
+.spec-tag.is-heur{background:rgba(154,106,20,.14); color:#8a5e12}
+.spec-title{font-size:16px; font-weight:700; color:var(--ink); line-height:1.4; word-break:break-word}
+.spec-gist{font-size:12.5px; color:var(--ink-2); margin-top:3px}
+.spec-chips{display:flex; flex-wrap:wrap; gap:7px; margin-top:11px}
+.chip{display:inline-flex; align-items:center; gap:6px; background:var(--panel-2); border:1px solid var(--line); border-radius:7px; padding:4px 9px}
+.chip-k{font-size:10px; color:var(--ink-3); letter-spacing:.04em}
+.chip-v{font-size:12px; color:var(--ink); font-weight:600; display:inline-flex; align-items:center; gap:5px}
+.chip .sw{width:10px; height:10px; border-radius:3px; display:inline-block}
+
+/* 出力：アクションバー */
+.actions{
+  position:sticky; bottom:0; max-width:840px; margin:18px auto 0;
+  padding:12px 0 18px; display:flex; gap:10px; justify-content:flex-end;
+  background:linear-gradient(to top, var(--desk) 62%, transparent);
+}
+
+/* トースト */
+.toast{
+  position:fixed; left:50%; bottom:28px; transform:translateX(-50%) translateY(14px);
+  background:var(--ink); color:#fff; font-size:12.5px; padding:9px 16px; border-radius:8px;
+  opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:60; letter-spacing:.03em;
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+
+/* レスポンシブ */
+@media (max-width:900px){
+  .app-main{grid-template-columns:1fr; height:auto; overflow:visible}
+  .pane{overflow:visible}
+  .pane-input{border-right:none; border-bottom:1px solid var(--line)}
+  .pane-output{padding:20px 14px 0}
+  .input{min-height:200px}
+  .actions{position:static; background:none; justify-content:stretch; flex-wrap:wrap}
+  .actions .btn{flex:1}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* 印刷：文書だけを残す */
+@media print{
+  .app-header,.pane-input,.spec,.actions,.empty,.toast{display:none!important}
+  .app-main{display:block; height:auto}
+  .pane-output{overflow:visible; background:#fff; padding:0}
+}
+</style>
+
+<!-- 文書（出力）のスタイル。HTML書き出しでもこのまま再利用する -->
+<style id="doc-css">
+.sheet{
+  max-width:840px; margin:0 auto; background:#fff;
+  border:1px solid #E6E2D8; border-radius:6px;
+  box-shadow:0 6px 26px rgba(40,35,20,.07);
+  padding:60px 64px;
+}
+.doc{
+  --accent:#2A4C70; --accent-08:rgba(42,76,112,.08); --accent-12:rgba(42,76,112,.12); --accent-16:rgba(42,76,112,.16);
+  --doc-font:var(--sans); --doc-ink:#201F1B; --doc-ink-2:#55534C; --doc-line:#E7E3D9;
+  font-family:var(--doc-font); color:var(--doc-ink);
+  font-size:16px; line-height:1.85; letter-spacing:.01em;
+  word-wrap:break-word;
+}
+.doc>*:first-child{margin-top:0}
+.doc h1{
+  font-size:1.95rem; line-height:1.42; font-weight:700; letter-spacing:.012em;
+  margin:.1em 0 .9em; padding-bottom:.42em; border-bottom:2px solid var(--accent);
+}
+.doc h2{
+  font-size:1.42rem; line-height:1.5; font-weight:700;
+  margin:2.3em 0 .85em; padding:.05em 0 .05em .62em; border-left:5px solid var(--accent);
+}
+.doc h3{
+  font-size:1.16rem; line-height:1.55; font-weight:700;
+  margin:1.9em 0 .6em; padding-bottom:.28em; border-bottom:1px solid var(--accent-16);
+}
+.doc h4{font-size:1.03rem; font-weight:700; margin:1.5em 0 .5em; color:var(--doc-ink)}
+.doc p{margin:0 0 1.15em}
+.doc ul,.doc ol{margin:0 0 1.25em; padding-left:1.6em}
+.doc li{margin:.4em 0}
+.doc li::marker{color:var(--accent)}
+.doc li>ul,.doc li>ol{margin:.35em 0}
+.doc a{color:var(--accent); text-decoration:underline; text-decoration-color:var(--accent-16); text-underline-offset:2px}
+.doc a:hover{text-decoration-color:var(--accent)}
+.doc strong{font-weight:700}
+.doc em{font-style:italic}
+.doc hr{border:none; border-top:1px solid var(--doc-line); margin:2.2em 0}
+.doc img{max-width:100%; height:auto; border-radius:6px}
+
+/* インラインコード / コードブロック */
+.doc code{
+  font-family:var(--mono); font-size:.88em;
+  background:#F2F0EA; border:1px solid var(--doc-line); border-radius:5px;
+  padding:.1em .42em; color:#324; word-break:break-word;
+}
+.doc pre{
+  background:#F7F6F1; border:1px solid var(--doc-line); border-radius:8px;
+  padding:16px 18px; overflow:auto; margin:0 0 1.3em; line-height:1.7;
+}
+.doc pre code{background:none; border:none; padding:0; font-size:.86em; color:#2c2c28}
+.hljs-keyword,.hljs-built_in,.hljs-type{color:#1F3A56}
+.hljs-string,.hljs-attr{color:#2F6B4F}
+.hljs-number,.hljs-literal{color:#9A4D2E}
+.hljs-comment,.hljs-quote{color:#9A968B; font-style:italic}
+.hljs-title,.hljs-function,.hljs-section{color:#7A3E8F}
+.hljs-meta,.hljs-symbol{color:#8a5e12}
+
+/* 表 */
+.doc table{width:100%; border-collapse:collapse; margin:0 0 1.35em; font-size:.95em}
+.doc th{background:var(--accent-08); border:1px solid var(--doc-line); padding:.58em .8em; text-align:left; font-weight:700}
+.doc td{border:1px solid var(--doc-line); padding:.55em .8em}
+.doc tbody tr:nth-child(even){background:#FAF9F5}
+
+/* 引用 */
+.doc blockquote{margin:0 0 1.25em; padding:.2em 0 .2em 1.05em; border-left:4px solid var(--doc-line); color:var(--doc-ink-2)}
+.doc blockquote p:last-child{margin-bottom:0}
+
+/* コールアウト */
+.doc .callout{
+  position:relative; margin:0 0 1.35em; padding:14px 18px 14px 46px;
+  border:1px solid; border-radius:9px; color:var(--doc-ink);
+}
+.doc .callout p:last-child{margin-bottom:0}
+.doc .callout::before{
+  position:absolute; left:16px; top:15px; font-family:var(--sans);
+  font-weight:700; font-size:13px; width:18px; text-align:center;
+}
+.doc .callout-label{font-weight:700; font-size:.92em; margin-bottom:.3em; letter-spacing:.04em}
+.doc .callout-warn{background:#FBF3E6; border-color:#E8C98C}
+.doc .callout-warn .callout-label{color:#9A6A14}
+.doc .callout-warn::before{content:"！"; color:#9A6A14}
+.doc .callout-point{background:var(--accent-08); border-color:var(--accent-16)}
+.doc .callout-point .callout-label{color:var(--accent)}
+.doc .callout-point::before{content:"◆"; color:var(--accent); font-size:11px; top:17px}
+.doc .callout-note{background:#F1F4F6; border-color:#D6DEE3}
+.doc .callout-note .callout-label{color:#4A6072}
+.doc .callout-note::before{content:"≡"; color:#4A6072}
+
+/* 目次 */
+.doc .toc{
+  background:#F8F7F2; border:1px solid var(--doc-line); border-radius:9px;
+  padding:16px 20px; margin:0 0 1.9em;
+}
+.doc .toc-title{font-weight:700; font-size:.92rem; color:var(--doc-ink-2); letter-spacing:.12em; margin-bottom:.55em}
+.doc .toc ul{list-style:none; padding-left:0; margin:0}
+.doc .toc li{margin:.32em 0}
+.doc .toc a{color:var(--doc-ink); text-decoration:none; border:none}
+.doc .toc a:hover{color:var(--accent)}
+.doc .toc .lvl3{padding-left:1.3em; font-size:.93em}
+.doc .toc .lvl3 a{color:var(--doc-ink-2)}
+
+/* チェックリスト */
+.doc input[type=checkbox]{accent-color:var(--accent); margin-right:.4em}
+.doc li.task-list-item{list-style:none; margin-left:-1.2em}
+
+/* 密度（compact） */
+.doc.density-compact{line-height:1.72}
+.doc.density-compact p{margin-bottom:.95em}
+.doc.density-compact h2{margin-top:1.9em}
+
+/* ===== テーマ：見出しとレイアウトを大きく切り替える ===== */
+/* theme-standard は基本スタイルそのまま（追加指定なし） */
+
+/* 報告書：ヘッダーブロック＋全幅の見出し罫 */
+.doc.theme-report h1{
+  background:var(--accent-08); border-left:5px solid var(--accent); border-bottom:none;
+  padding:16px 20px; border-radius:4px; font-size:1.78rem;
+}
+.doc.theme-report h2{
+  border-left:none; padding:0 0 .35em; border-bottom:2px solid var(--accent);
+  color:var(--accent); font-size:1.32rem;
+}
+.doc.theme-report h3{
+  border-bottom:none; border-left:3px solid var(--accent-16); padding-left:.7em; color:var(--doc-ink);
+}
+
+/* 提案書：大きな表題＋塗りつぶしの帯見出し */
+.doc.theme-proposal{font-size:16.5px}
+.doc.theme-proposal h1{
+  font-size:2.4rem; line-height:1.3; color:var(--accent);
+  border-bottom:4px solid var(--accent); padding-bottom:.3em; letter-spacing:.02em;
+}
+.doc.theme-proposal h2{
+  border-left:none; background:var(--accent); color:#fff; padding:9px 16px;
+  border-radius:7px; font-size:1.28rem; margin:2.4em 0 .9em;
+}
+.doc.theme-proposal h3{
+  border-bottom:none; color:var(--accent); padding-left:1.1em; position:relative;
+}
+.doc.theme-proposal h3::before{
+  content:""; position:absolute; left:0; top:.5em; width:.7em; height:.7em;
+  background:var(--accent); border-radius:2px;
+}
+
+/* マニュアル：手順マーカー付き見出し＋ゆったり行間 */
+.doc.theme-manual{line-height:1.95}
+.doc.theme-manual h2{
+  border-left:none; padding:0 0 0 46px; position:relative; min-height:34px;
+  display:flex; align-items:center; color:var(--doc-ink); font-size:1.3rem;
+}
+.doc.theme-manual h2::before{
+  content:"▶"; position:absolute; left:0; top:50%; transform:translateY(-50%);
+  width:32px; height:32px; background:var(--accent); color:#fff; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; font-size:12px;
+}
+.doc.theme-manual h3{
+  border-bottom:none; padding-left:1.1em; position:relative; color:var(--accent);
+}
+.doc.theme-manual h3::before{content:"›"; position:absolute; left:.1em; color:var(--accent); font-weight:700}
+
+/* 仕様書：技術ドキュメント調（細い罫・小さめ見出し・表ヘッダ強調）*/
+.doc.theme-spec{line-height:1.78}
+.doc.theme-spec h1{
+  font-size:1.7rem; border-bottom:none; border-top:3px solid var(--accent);
+  padding:.5em 0;
+}
+.doc.theme-spec h2{
+  border-left:none; border-top:1px solid var(--doc-line); border-bottom:1px solid var(--doc-line);
+  padding:.4em 0; color:var(--accent); font-size:1.18rem; letter-spacing:.03em;
+}
+.doc.theme-spec h3{
+  border-bottom:none; border-left:3px solid var(--accent); padding-left:.6em;
+  color:var(--doc-ink); font-size:1.05rem;
+}
+.doc.theme-spec th{background:var(--accent); color:#fff}
+
+/* 記事・説明：エディトリアル（中央表題・余白広め・両端揃え）*/
+.doc.theme-article{line-height:2.0}
+.doc.theme-article h1{
+  text-align:center; border-bottom:none; font-size:2.1rem; padding-bottom:.45em; position:relative;
+}
+.doc.theme-article h1::after{
+  content:""; display:block; width:46px; height:3px; background:var(--accent); margin:.5em auto 0;
+}
+.doc.theme-article h2{
+  border-left:none; padding:.5em 0 0; font-size:1.42rem; margin-top:2.6em;
+  color:var(--doc-ink); position:relative;
+}
+.doc.theme-article h2::before{
+  content:""; position:absolute; top:0; left:0; width:28px; height:2px; background:var(--accent);
+}
+.doc.theme-article h3{border-bottom:none; color:var(--accent)}
+.doc.theme-article p{text-align:justify}
+
+/* 折りたたみ：見出しクリックでセクションを開閉するアコーディオン */
+.doc.theme-toggle .toggle-sec{
+  border:1px solid var(--doc-line); border-radius:8px; margin:0 0 12px; overflow:hidden;
+}
+.doc.theme-toggle .toggle-head{
+  margin:0; border:none; background:var(--accent-08); color:var(--accent);
+  padding:12px 16px 12px 40px; font-size:1.2rem; cursor:pointer; position:relative;
+  user-select:none; -webkit-user-select:none;
+}
+.doc.theme-toggle .toggle-head:hover{background:var(--accent-12)}
+.doc.theme-toggle .toggle-head::before{
+  content:"\25BE"; position:absolute; left:16px; top:50%; transform:translateY(-50%) rotate(0deg);
+  color:var(--accent); font-size:12px; transition:transform .15s;
+}
+.doc.theme-toggle .toggle-sec.collapsed .toggle-head::before{transform:translateY(-50%) rotate(-90deg)}
+.doc.theme-toggle .toggle-head:focus-visible{outline:2px solid var(--accent); outline-offset:-2px}
+.doc.theme-toggle .toggle-body{padding:14px 18px 4px}
+.doc.theme-toggle .toggle-sec.collapsed .toggle-body{display:none}
+
+/* 文書の印刷指定（書き出しファイルにも効く） */
+@media print{
+  html,body{background:#fff !important}
+  .sheet{box-shadow:none; border:none; border-radius:0; max-width:none; margin:0; padding:0}
+  .doc{font-size:10.7pt}
+  .doc h1{font-size:18pt} .doc h2{font-size:14pt} .doc h3{font-size:12pt}
+  /* 折りたたみは印刷時すべて展開（内容欠落を防ぐ）*/
+  .doc.theme-toggle .toggle-sec.collapsed .toggle-body{display:block !important}
+  .doc.theme-toggle .toggle-head::before{display:none}
+  .doc pre,.doc table,.doc .callout,.doc blockquote,.doc img,.doc h1,.doc h2,.doc h3{break-inside:avoid}
+  .doc h2,.doc h3,.doc h4{break-after:avoid}
+  .doc a{color:inherit}
+  *{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+  @page{size:A4; margin:18mm 16mm}
+}
+</style>
+</head>
+
+<body>
+<header class="app-header">
+  <div class="brand">
+    <span class="mark"></span>
+    <span class="name">ととのえ</span>
+    <span class="sub">Markdown 自動整形</span>
+  </div>
+  <span class="hint">中身を読んで配色・フォント・目次を自動で整えます</span>
+</header>
+
+<main class="app-main">
+  <aside class="pane pane-input">
+    <div class="field">
+      <label class="lbl" for="input">Markdown を貼り付け / ファイルをドロップ</label>
+      <textarea id="input" class="input" spellcheck="false"
+        placeholder="# 見出し&#10;&#10;ここに Markdown を貼り付けるか、.md ファイルをこの枠にドラッグしてください。"></textarea>
+      <div class="filerow">
+        <label class="btn btn-ghost btn-sm">ファイルを選択<input type="file" id="file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden></label>
+        <button class="btn btn-ghost btn-sm" id="btnSample">サンプル</button>
+        <button class="btn btn-ghost btn-sm" id="btnClear">クリア</button>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="btnCompose">整える</button>
+    <div class="status" id="status" aria-live="polite"></div>
+
+    <div class="tune">
+      <div class="tune-title">微調整<span>（任意・自動判定の上書き）</span></div>
+      <div class="tune-row">
+        <span class="tune-k">テーマ</span>
+        <div class="cdrop" id="themeDrop">
+          <button type="button" class="cdrop-btn" id="themeDropBtn" aria-haspopup="listbox" aria-expanded="false" disabled>
+            <span id="themeDropLabel">技術文書</span>
+            <span class="cdrop-caret" aria-hidden="true">▾</span>
+          </button>
+          <ul class="cdrop-list" id="themeDropList" role="listbox" aria-label="テーマ" hidden></ul>
+        </div>
+      </div>
+      <div class="tune-row">
+        <span class="tune-k">配色</span>
+        <div class="swatches" id="swatches">
+          <button type="button" class="sw-b" data-accent="#284B6F" data-name="藍"   style="--c:#284B6F" title="藍"></button>
+          <button type="button" class="sw-b" data-accent="#2F5D8C" data-name="鋼青" style="--c:#2F5D8C" title="鋼青"></button>
+          <button type="button" class="sw-b" data-accent="#38468C" data-name="群青" style="--c:#38468C" title="群青"></button>
+          <button type="button" class="sw-b" data-accent="#2E5E5A" data-name="青碧" style="--c:#2E5E5A" title="青碧"></button>
+          <button type="button" class="sw-b" data-accent="#2F6B4F" data-name="常磐" style="--c:#2F6B4F" title="常磐"></button>
+          <button type="button" class="sw-b" data-accent="#4F5A2E" data-name="海松" style="--c:#4F5A2E" title="海松（みる）"></button>
+          <button type="button" class="sw-b" data-accent="#4A3C8C" data-name="桔梗" style="--c:#4A3C8C" title="桔梗"></button>
+          <button type="button" class="sw-b" data-accent="#6B4A7A" data-name="葡萄" style="--c:#6B4A7A" title="葡萄（えび）"></button>
+          <button type="button" class="sw-b" data-accent="#9A3B3B" data-name="茜"   style="--c:#9A3B3B" title="茜"></button>
+          <button type="button" class="sw-b" data-accent="#7A3B30" data-name="海老茶" style="--c:#7A3B30" title="海老茶"></button>
+          <button type="button" class="sw-b" data-accent="#7A5A1A" data-name="黄土" style="--c:#7A5A1A" title="黄土"></button>
+          <button type="button" class="sw-b" data-accent="#3A3A3A" data-name="墨"   style="--c:#3A3A3A" title="墨"></button>
+          <label class="sw-b sw-custom" title="任意の色を選ぶ"><input type="color" id="customColor" value="#284B6F" aria-label="任意の色"></label>
+        </div>
+      </div>
+      <div class="tune-row">
+        <span class="tune-k">フォント</span>
+        <div class="fontpicker" id="fontPicker">
+          <button type="button" data-font="gothic" class="fpill is-on">ゴシック</button>
+          <button type="button" data-font="mincho" class="fpill">明朝</button>
+          <button type="button" data-font="maru" class="fpill">丸ゴ</button>
+          <button type="button" data-font="ud" class="fpill">UD</button>
+          <button type="button" data-font="kyokasho" class="fpill">教科書</button>
+        </div>
+      </div>
+      <div class="tune-row">
+        <span class="tune-k">目次</span>
+        <div class="seg" id="segToc">
+          <button type="button" data-toc="true" class="seg-b" disabled>あり</button>
+          <button type="button" data-toc="false" class="seg-b" disabled>なし</button>
+        </div>
+      </div>
+      <p class="tune-note">「整える」を押すとテーマ・配色・フォントを自動で選びます。ここでの変更はその上書きで、即時に反映されます（再解析なし）。</p>
+    </div>
+  </aside>
+
+  <section class="pane pane-output" id="paneOutput">
+    <div class="empty" id="empty">
+      <div class="empty-mark">整</div>
+      <p class="empty-t">ここに整えた文書が表示されます</p>
+      <p class="empty-s">左に Markdown を入れて「整える」を押してください。</p>
+      <button class="btn btn-ghost btn-sm" id="btnSample2">サンプルで試す</button>
+    </div>
+
+    <div class="spec" id="spec" hidden>
+      <span class="spec-tick"></span>
+      <div class="spec-main">
+        <div class="spec-head">
+          <span class="spec-kicker">整形レポート</span>
+          <span class="spec-tag" id="specSource"></span>
+        </div>
+        <div class="spec-title" id="specTitle"></div>
+        <div class="spec-gist" id="specGist"></div>
+        <div class="spec-chips">
+          <span class="chip"><span class="chip-k">テーマ</span><span class="chip-v" id="chipType"></span></span>
+          <span class="chip"><span class="chip-k">配色</span><span class="chip-v"><i class="sw" id="chipSw"></i><span id="chipPalette"></span></span></span>
+          <span class="chip"><span class="chip-k">フォント</span><span class="chip-v" id="chipFont"></span></span>
+          <span class="chip"><span class="chip-k">目次</span><span class="chip-v" id="chipToc"></span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sheet" id="sheet" hidden>
+      <article class="doc" id="doc"></article>
+    </div>
+
+    <div class="actions" id="actions" hidden>
+      <button class="btn btn-ghost" id="btnHtml">HTMLで保存</button>
+      <button class="btn btn-primary" id="btnPdf">PDFで保存（印刷）</button>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script type="text/plain" id="sampleMd">
+# ととのえ 設計書
+
+> [!ポイント]
+> 本書は Markdown 自動整形ツール **「ととのえ」** の設計書です。この文書自体がサンプルを兼ねており、**見出し・表・コードブロック・コールアウト・チェックリスト**など多様な記法で、自動整形の実力を一望できます。
+
+最終更新：2026-06-26 ／ 区分：*内部設計資料*
+
+---
+
+## 1. 概要
+
+「ととのえ」は、Markdown を貼り付けて **「整える」** を押すだけで、内容に応じた配色・フォント・レイアウトへ自動整形する _単一ファイルの Web ツール_ です。社内ドキュメントを「ぱっと見て分かる」状態にすることを目的としています。
+
+- **入力**：Markdown テキスト（貼り付け／`.md` ファイルのドラッグ＆ドロップ）
+- **出力**：画面表示・印刷用 PDF・スタイル同梱の HTML
+- **動作**：すべてブラウザ内で完結し、本文は外部送信しません
+
+### 1.1 設計方針
+
+1. 専門知識ゼロでも「整える」一発で読みやすくする
+2. 自動結果を起点に、テーマ・配色・フォントを手で微調整できる
+3. 依存を最小化し、配布は 1 ファイルのみ
+
+---
+
+## 2. 動作環境・技術スタック
+
+| 項目 | 内容 |
+| --- | --- |
+| 形態 | 単一 HTML ファイル |
+| 主要ライブラリ | `marked` ／ `DOMPurify` ／ `highlight.js`（CDN 読込） |
+| 対応ブラウザ | Chrome ／ Edge ／ Safari ／ Firefox の最新版 |
+| 文字コード | UTF-8 ／ Shift_JIS(CP932) ／ UTF-16 を自動判別 |
+| 通信 | なし（ローカル完結） |
+
+> [!注意]
+> 旧版にあった AI 連携機能は廃止しました。現在はすべて **ブラウザ内の自動判定** で動作するため、オフライン環境でも利用できます。
+
+---
+
+## 3. 機能仕様
+
+### 3.1 自動判定ロジック
+
+入力された Markdown を走査し、次の指標からテーマを推定します。
+
+| 指標 | 判定への影響 |
+| --- | --- |
+| コードブロック数 | 多い → **技術文書** |
+| 表の行数 | 多い → **報告書** |
+| 見出し数・本文量 | 少見出し＋長文 → **記事・説明** |
+
+判定の擬似コードは次のとおりです。
+
+```javascript
+function heuristicSpec(md) {
+  const codeBlocks = countFences(md);   // コードブロック数
+  const tableRows  = countTableRows(md); // 表の行数
+  const headings   = countHeadings(md);  // 見出し数
+
+  if (codeBlocks >= 2) return theme("standard", "技術文書");
+  if (tableRows  >= 6) return theme("report",   "報告書");
+  if (headings   <= 3) return theme("article",  "記事・説明");
+  return theme("standard", "技術文書");
+}
+```
+
+### 3.2 テーマ一覧
+
+各テーマは見出しとレイアウトを大きく切り替えます。
+
+- **技術文書** … 標準。下線＋左バーの見出し
+- **報告書** … 枠付きヘッダー＋全幅の罫線
+- **提案書** … 塗りつぶしの帯見出し（インパクト重視）
+- **マニュアル** … 手順マーカー（▶）付き・教科書体
+- **仕様書** … 細い罫線で囲む技術調
+- **記事・説明** … 中央寄せのエディトリアル
+- **折りたたみ** … 見出しクリックでセクションを開閉
+
+### 3.3 対応 Markdown 記法
+
+> [!補足]
+> この設計書は、対応記法のショーケースも兼ねています。下のチェックリストの項目は、すべて本書内で使用済みです。
+
+- [x] 見出し（h1〜h4）
+- [x] **太字**・*斜体*・~~打ち消し線~~
+- [x] 箇条書き／番号付きリスト（入れ子可）
+- [x] 表（GFM）
+- [x] コードブロック（言語別ハイライト）
+- [x] コールアウト（注意／ポイント／補足）
+- [x] 引用ブロック
+- [x] リンクと `インラインコード`
+- [x] 水平線
+- [ ] 画像（任意・本書では未使用）
+
+入れ子リストの例：
+
+- フォント
+  - ゴシック（既定）
+  - 明朝
+  - 丸ゴシック／UDゴシック／教科書体
+- 配色
+  1. 和色プリセット 12 色
+  2. 任意色（カラーピッカー）
+
+#### 3.3.1 コードブロックの例
+
+スタイル定義（CSS）:
+
+```css
+.doc h2 {
+  border-left: 5px solid var(--accent);
+  padding-left: 0.6em;
+}
+```
+
+整形設定の内部表現（JSON）:
+
+```json
+{
+  "theme": "report",
+  "font": "gothic",
+  "accent": "#284B6F",
+  "showToc": true
+}
+```
+
+起動コマンド（PowerShell）:
+
+```powershell
+Start-Process ".\totonoe.html"
+```
+
+---
+
+## 4. 画面構成
+
+左に入力、右にプレビューを置く 2 ペイン構成です。
+
+```
++----------------+----------------------------+
+|  入力ペイン     |  プレビューペイン           |
+|  ・テキスト入力 |  ・整形レポート（テーマ等） |
+|  ・整えるボタン |  ・整形後ドキュメント       |
+|  ・微調整       |  ・PDF / HTML 書き出し      |
++----------------+----------------------------+
+```
+
+### 4.1 微調整パネル
+
+整形後に、**テーマ・配色・フォント・目次**を手動で上書きできます。
+
+> 設定の変更は再解析なしで即時に反映されます。プレビューを見ながら最終調整できます。
+
+---
+
+## 5. 処理フロー
+
+1. Markdown を入力する
+2. **「整える」** を押す（または `Ctrl` ／ `⌘` + `Enter`）
+3. 内容を解析し、テーマ・配色・フォント・目次を自動決定
+4. プレビューへ反映
+5. 必要に応じて微調整し、**PDF** または **HTML** で書き出す
+
+---
+
+## 6. 既知の制約・今後の拡張
+
+### 6.1 制約
+
+- 連番の自動付与は行いません（手動採番との二重表示を避けるため）
+- 画像は簡易表示にとどめます
+
+### 6.2 拡張候補
+
+- [ ] テーマのユーザー定義
+- [ ] 図表番号の自動付与
+- [ ] 図表記法（Mermaid 等）のレンダリング
+
+---
+
+詳細は [プロジェクトの README](#readme) と [変更履歴](#changelog) を参照してください。不明点は社内チャットまで。
+</script>
+
+<script>
+"use strict";
+document.addEventListener("DOMContentLoaded", function(){
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var el = {
+    input: document.getElementById("input"),
+    file: document.getElementById("file"),
+    btnCompose: document.getElementById("btnCompose"),
+    btnSample: document.getElementById("btnSample"),
+    btnSample2: document.getElementById("btnSample2"),
+    btnClear: document.getElementById("btnClear"),
+    btnPdf: document.getElementById("btnPdf"),
+    btnHtml: document.getElementById("btnHtml"),
+    status: document.getElementById("status"),
+    paneOutput: document.getElementById("paneOutput"),
+    empty: document.getElementById("empty"),
+    spec: document.getElementById("spec"),
+    sheet: document.getElementById("sheet"),
+    doc: document.getElementById("doc"),
+    actions: document.getElementById("actions"),
+    specSource: document.getElementById("specSource"),
+    specTitle: document.getElementById("specTitle"),
+    specGist: document.getElementById("specGist"),
+    chipType: document.getElementById("chipType"),
+    chipSw: document.getElementById("chipSw"),
+    chipPalette: document.getElementById("chipPalette"),
+    chipFont: document.getElementById("chipFont"),
+    chipToc: document.getElementById("chipToc"),
+    fontPicker: document.getElementById("fontPicker"),
+    swatches: document.getElementById("swatches"),
+    customColor: document.getElementById("customColor"),
+    themeDrop: document.getElementById("themeDrop"),
+    themeDropBtn: document.getElementById("themeDropBtn"),
+    themeDropLabel: document.getElementById("themeDropLabel"),
+    themeDropList: document.getElementById("themeDropList"),
+    segToc: document.getElementById("segToc"),
+    toast: document.getElementById("toast")
+  };
+
+  // 本文フォントの定義（増やしたい場合はここに追加するだけ）
+  var FONT_STACKS = {
+    gothic: "var(--sans)", mincho: "var(--serif)", maru: "var(--maru)", ud: "var(--ud)", kyokasho: "var(--kyokasho)"
+  };
+  var FONT_LABELS = {
+    gothic: "ゴシック", mincho: "明朝", maru: "丸ゴシック", ud: "UDゴシック", kyokasho: "教科書体"
+  };
+  var ALLOWED_FONTS = Object.keys(FONT_STACKS);
+
+  // テーマ候補（ドロップダウンに説明文を併記）
+  var THEME_OPTIONS = [
+    { value: "技術文書",   desc: "標準。見出しは下線＋左バーですっきり" },
+    { value: "報告書",     desc: "タイトルが枠付きヘッダー、見出しは全幅の罫線" },
+    { value: "提案書",     desc: "大きな表題＋塗りつぶしの帯見出し。インパクト重視" },
+    { value: "マニュアル", desc: "丸い手順マーカー（▶）付き見出し、教科書体" },
+    { value: "議事録",     desc: "報告書調の枠付きヘッダーで記録向き" },
+    { value: "仕様書",     desc: "細い罫線で囲む技術調、表ヘッダー色塗り、コンパクト" },
+    { value: "記事・説明", desc: "中央寄せの表題＋アクセント線のエディトリアル風" },
+    { value: "折りたたみ", desc: "見出しクリックでセクションを開閉できるアコーディオン" }
+  ];
+
+  var state = { md: "", spec: null };
+
+  // ---- 小物 ----
+  var toastTimer;
+  function toast(msg){
+    el.toast.textContent = msg; el.toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ el.toast.classList.remove("show"); }, 2200);
+  }
+  function setStatus(msg, kind){
+    el.status.textContent = msg || "";
+    el.status.className = "status" + (kind ? " " + kind : "");
+  }
+  function escHtml(s){ return String(s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]; }); }
+  function hexA(hex, a){
+    var h = String(hex||"").trim().replace("#","");
+    if(h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    if(!/^[0-9a-fA-F]{6}$/.test(h)) h = "2A4C70";
+    var r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+    return "rgba(" + r + "," + g + "," + b + "," + a + ")";
+  }
+  function isHex(h){ return typeof h === "string" && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(h.trim()); }
+
+  // ---- 内容からの自動判定 ----
+  function heuristicSpec(md){
+    var fences = (md.match(/```/g) || []).length;
+    var inlineCode = (md.match(/`[^`\n]+`/g) || []).length;
+    var tableRows = (md.match(/^\s*\|.*\|\s*$/gm) || []).length;
+    var headings = (md.match(/^#{1,6}\s+/gm) || []).length;
+    var len = md.replace(/\s/g, "").length;
+    var docType = "技術文書", name = "鋼青", accent = "#2F5D8C", font = "gothic";
+    if(fences >= 2 || inlineCode >= 3){ docType = "技術文書"; name = "鋼青"; accent = "#2F5D8C"; font = "gothic"; }
+    else if(tableRows >= 6){ docType = "報告書"; name = "藍"; accent = "#284B6F"; font = "gothic"; }
+    else if(headings <= 3 && len > 700){ docType = "記事・説明"; name = "常磐"; accent = "#2F6B4F"; font = "mincho"; }
+    var m = md.match(/^#\s+(.+)$/m);
+    var title = m ? m[1] : (md.split("\n").map(function(s){ return s.trim(); }).filter(Boolean)[0] || "無題ドキュメント");
+    title = title.replace(/^#+\s*/, "").replace(/[*_`]/g, "").trim().slice(0, 80);
+    return { docType: docType, title: title, summary: "", fontStyle: font,
+      palette: { name: name, accent: accent }, showToc: headings >= 4, density: "comfortable", source: "heuristic" };
+  }
+
+  // ---- コールアウト変換 ----
+  var CALLOUTS = [
+    { re: /^\s*\[!\s*(注意|warning|caution|danger|危険)\s*\]/i, type: "warn", label: "注意" },
+    { re: /^\s*\[!\s*(ポイント|重要|important|tip|tips)\s*\]/i, type: "point", label: "ポイント" },
+    { re: /^\s*\[!\s*(補足|メモ|note|info)\s*\]/i, type: "note", label: "補足" }
+  ];
+  function transformCallouts(root){
+    root.querySelectorAll("blockquote").forEach(function(bq){
+      var firstP = bq.querySelector("p");
+      if(!firstP) return;
+      var text = firstP.textContent.replace(/^\s+/, "");
+      for(var i = 0; i < CALLOUTS.length; i++){
+        if(CALLOUTS[i].re.test(text)){
+          firstP.innerHTML = firstP.innerHTML.replace(/^\s*\[!\s*[^\]]+\]\s*/, "");
+          if(!firstP.textContent.trim()) firstP.remove();
+          bq.classList.add("callout", "callout-" + CALLOUTS[i].type);
+          var lab = document.createElement("div");
+          lab.className = "callout-label";
+          lab.textContent = CALLOUTS[i].label;
+          bq.insertBefore(lab, bq.firstChild);
+          break;
+        }
+      }
+    });
+  }
+
+  // ---- 目次 ----
+  function slugify(t, i){
+    var s = t.replace(/\s+/g, "-").replace(/[^\w぀-ヿ一-鿿-]/g, "").slice(0, 24);
+    return "sec-" + i + (s ? "-" + s : "");
+  }
+  function buildToc(root, show){
+    var heads = Array.prototype.slice.call(root.querySelectorAll("h2, h3"));
+    heads.forEach(function(h, i){ if(!h.id) h.id = slugify(h.textContent, i); });
+    if(!show || heads.length < 2) return;
+    var toc = document.createElement("nav");
+    toc.className = "toc";
+    toc.innerHTML = '<div class="toc-title">目次</div>';
+    var ul = document.createElement("ul");
+    heads.forEach(function(h){
+      var li = document.createElement("li");
+      if(h.tagName === "H3") li.className = "lvl3";
+      var a = document.createElement("a");
+      a.href = "#" + h.id; a.textContent = h.textContent;
+      a.addEventListener("click", function(e){
+        e.preventDefault();
+        var tgt = document.getElementById(h.id);
+        if(tgt) tgt.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      });
+      li.appendChild(a); ul.appendChild(li);
+    });
+    toc.appendChild(ul);
+    var h1 = root.querySelector("h1");
+    if(h1) root.insertBefore(toc, h1.nextSibling);
+    else root.insertBefore(toc, root.firstChild);
+  }
+
+  // ---- 配色・フォントの即時適用（CSS変数の差し替えのみ。再解析不要）----
+  function syncFontPicker(key){
+    Array.prototype.forEach.call(el.fontPicker.children, function(b){
+      b.classList.toggle("is-on", b.getAttribute("data-font") === key);
+    });
+  }
+  function syncSwatches(ac){
+    Array.prototype.forEach.call(el.swatches.querySelectorAll("[data-accent]"), function(b){
+      b.classList.toggle("is-on", (b.getAttribute("data-accent") || "").toLowerCase() === ac.toLowerCase());
+    });
+    if(el.customColor && /^#[0-9a-fA-F]{6}$/.test(ac)) el.customColor.value = ac;
+  }
+  function setDocAccent(ac, name){
+    var d = el.doc;
+    d.style.setProperty("--accent", ac);
+    d.style.setProperty("--accent-08", hexA(ac, 0.08));
+    d.style.setProperty("--accent-12", hexA(ac, 0.12));
+    d.style.setProperty("--accent-16", hexA(ac, 0.16));
+    el.chipSw.style.background = ac;
+    if(name != null) el.chipPalette.textContent = name;
+    syncSwatches(ac);
+    if(state.spec){ state.spec.palette.accent = ac; if(name != null) state.spec.palette.name = name; }
+  }
+  function setDocFont(key){
+    if(ALLOWED_FONTS.indexOf(key) < 0) key = "gothic";
+    el.doc.style.setProperty("--doc-font", FONT_STACKS[key]);
+    el.chipFont.textContent = FONT_LABELS[key];
+    syncFontPicker(key);
+    if(state.spec) state.spec.fontStyle = key;
+  }
+  function setDocType(val){
+    if(!val || !val.trim()) return;
+    el.chipType.textContent = val;
+    if(state.spec) state.spec.docType = val;
+    syncThemeDrop(val);
+  }
+  // カスタムドロップダウンの表示ラベルと選択状態を同期
+  function syncThemeDrop(val){
+    el.themeDropLabel.textContent = val;
+    Array.prototype.forEach.call(el.themeDropList.children, function(li){
+      li.setAttribute("aria-selected", String(li.getAttribute("data-value") === val));
+    });
+  }
+  // テーマごとの推奨スタイル（選ぶとフォント・配色がまとめて変わる）
+  var TYPE_PRESETS = {
+    "技術文書":   { font: "gothic",   accent: "#2F5D8C", name: "鋼青", theme: "standard" },
+    "報告書":     { font: "gothic",   accent: "#284B6F", name: "藍",   theme: "report" },
+    "提案書":     { font: "gothic",   accent: "#38468C", name: "群青", theme: "proposal" },
+    "マニュアル": { font: "kyokasho", accent: "#4F5A2E", name: "海松", theme: "manual" },
+    "議事録":     { font: "ud",       accent: "#2E5E5A", name: "青碧", theme: "report" },
+    "仕様書":     { font: "gothic",   accent: "#4A3C8C", name: "桔梗", theme: "spec" },
+    "記事・説明": { font: "mincho",   accent: "#2F6B4F", name: "常磐", theme: "article" },
+    "折りたたみ": { font: "gothic",   accent: "#284B6F", name: "藍",   theme: "toggle" }
+  };
+  function themeForType(t){ return (TYPE_PRESETS[t] && TYPE_PRESETS[t].theme) || "standard"; }
+  function currentTheme(){
+    var t = "standard";
+    Array.prototype.slice.call(el.doc.classList).forEach(function(c){ if(c.indexOf("theme-") === 0) t = c.slice(6); });
+    return t;
+  }
+  // 文書テーマ（見出し・レイアウト）の切替。フォント・配色には触れない
+  function setDocTheme(themeKey){
+    var d = el.doc;
+    Array.prototype.slice.call(d.classList).forEach(function(c){
+      if(c.indexOf("theme-") === 0) d.classList.remove(c);
+    });
+    d.classList.add("theme-" + themeKey);
+  }
+  // 折りたたみレイアウト：各h2と次のh2までの内容を開閉セクションにまとめる
+  function applyToggleLayout(root){
+    var h2s = [];
+    Array.prototype.slice.call(root.children).forEach(function(n){ if(n.tagName === "H2") h2s.push(n); });
+    h2s.forEach(function(h2){
+      var sec = document.createElement("section");
+      sec.className = "toggle-sec";
+      var body = document.createElement("div");
+      body.className = "toggle-body";
+      root.insertBefore(sec, h2);
+      sec.appendChild(h2);
+      h2.classList.add("toggle-head");
+      h2.setAttribute("role", "button");
+      h2.setAttribute("tabindex", "0");
+      h2.setAttribute("aria-expanded", "true");
+      var cur = sec.nextSibling;
+      while(cur && !(cur.nodeType === 1 && (cur.tagName === "H1" || cur.tagName === "H2" || (cur.className || "").indexOf("toggle-sec") === 0))){
+        var next = cur.nextSibling;
+        body.appendChild(cur);
+        cur = next;
+      }
+      sec.appendChild(body);
+    });
+  }
+  // テーマ選択時：ラベル更新＋見た目＋推奨フォント・配色を即時適用
+  function applyTypePreset(val){
+    if(el.sheet.hidden) return;
+    var p = TYPE_PRESETS[val] || { font: "gothic", accent: "#284B6F", name: "藍", theme: "standard" };
+    // 折りたたみが関わる切替はDOM構造が変わるため作り直す。それ以外はCSSの即時差替えのみ。
+    if(p.theme === "toggle" || currentTheme() === "toggle"){
+      state.spec.docType = val;
+      state.spec.fontStyle = p.font;
+      state.spec.palette = { accent: p.accent, name: p.name };
+      compose(state.md, state.spec);
+    } else {
+      setDocType(val);
+      setDocTheme(p.theme);
+      setDocFont(p.font);
+      setDocAccent(p.accent, p.name);
+    }
+  }
+  function setShowToc(show){
+    var existing = el.doc.querySelector("nav.toc");
+    if(show){
+      if(!existing) buildToc(el.doc, true);
+      else existing.style.display = "";
+    } else {
+      if(existing) existing.style.display = "none";
+    }
+    el.chipToc.textContent = show ? "あり" : "なし";
+    Array.prototype.forEach.call(el.segToc.children, function(b){
+      b.classList.toggle("is-on", b.getAttribute("data-toc") === String(show));
+    });
+    if(state.spec) state.spec.showToc = show;
+  }
+  // 整形後にコントロールを有効化
+  function enableTuneControls(spec){
+    el.themeDropBtn.disabled = false;
+    Array.prototype.forEach.call(el.segToc.children, function(b){ b.disabled = false; });
+    setDocType(spec.docType);
+    Array.prototype.forEach.call(el.segToc.children, function(b){
+      b.classList.toggle("is-on", b.getAttribute("data-toc") === String(spec.showToc));
+    });
+  }
+
+  // ---- 整形レポート + スタイル適用 ----
+  function applySpec(spec){
+    setDocAccent(spec.palette.accent, spec.palette.name);
+    setDocFont(spec.fontStyle);
+    setDocTheme(themeForType(spec.docType));
+    el.doc.classList.toggle("density-compact", spec.density === "compact");
+
+    el.specTitle.textContent = spec.title || "無題ドキュメント";
+    el.specGist.textContent = spec.summary || "";
+    el.specGist.style.display = spec.summary ? "" : "none";
+    el.chipType.textContent = spec.docType;
+    el.chipToc.textContent = spec.showToc ? "あり" : "なし";
+    el.specSource.textContent = "自動判定";
+    el.specSource.className = "spec-tag is-ai";
+    el.spec.hidden = false;
+    enableTuneControls(spec);
+  }
+
+  // ---- 整形（描画）----
+  function compose(md, spec){
+    if(typeof window.marked === "undefined"){
+      setStatus("描画ライブラリを読み込めませんでした（ネットワークをご確認ください）", "err");
+      return;
+    }
+    state.md = md; state.spec = spec;
+    marked.setOptions({ gfm: true, breaks: false });
+    var html = marked.parse(md);
+    if(typeof window.DOMPurify !== "undefined"){
+      html = DOMPurify.sanitize(html, { ADD_ATTR: ["id", "class", "type", "checked", "disabled", "target"] });
+    }
+    el.doc.innerHTML = html;
+    transformCallouts(el.doc);
+    buildToc(el.doc, spec.showToc);
+    if(typeof window.hljs !== "undefined"){
+      el.doc.querySelectorAll("pre code").forEach(function(b){ try { hljs.highlightElement(b); } catch(e){} });
+    }
+    applySpec(spec);
+    if(themeForType(spec.docType) === "toggle") applyToggleLayout(el.doc);
+    el.empty.hidden = true;
+    el.sheet.hidden = false;
+    el.actions.hidden = false;
+    el.paneOutput.scrollTop = 0;
+  }
+
+  // ---- 整える（内容から自動判定）----
+  function formatInput(){
+    var md = el.input.value;
+    if(!md.trim()){ toast("Markdown を入力してください"); el.input.focus(); return; }
+    var spec = heuristicSpec(md);
+    compose(md, spec);
+    setStatus("整えました。", "");
+  }
+
+  // ---- HTML書き出し ----
+  function exportHtml(){
+    if(el.sheet.hidden){ toast("先に整えてください"); return; }
+    var title = (state.spec && state.spec.title) || "document";
+    var css = document.getElementById("doc-css").textContent;
+    var rootVars =
+      "--sans:" + getComputedStyle(document.documentElement).getPropertyValue("--sans") + ";" +
+      "--serif:" + getComputedStyle(document.documentElement).getPropertyValue("--serif") + ";" +
+      "--maru:" + getComputedStyle(document.documentElement).getPropertyValue("--maru") + ";" +
+      "--ud:" + getComputedStyle(document.documentElement).getPropertyValue("--ud") + ";" +
+      "--kyokasho:" + getComputedStyle(document.documentElement).getPropertyValue("--kyokasho") + ";" +
+      "--mono:" + getComputedStyle(document.documentElement).getPropertyValue("--mono") + ";";
+    var docStyle = el.doc.getAttribute("style") || "";
+    var docClass = el.doc.className || "doc";
+    // 折りたたみテーマ：書き出し時はいったん全展開（内容欠落を防ぐ）し、開閉スクリプトを同梱
+    var isToggle = el.doc.classList.contains("theme-toggle");
+    var docInner;
+    if(isToggle){
+      var clone = el.doc.cloneNode(true);
+      Array.prototype.forEach.call(clone.querySelectorAll(".toggle-sec.collapsed"), function(s){ s.classList.remove("collapsed"); });
+      Array.prototype.forEach.call(clone.querySelectorAll(".toggle-head"), function(h){ h.setAttribute("aria-expanded", "true"); });
+      docInner = clone.innerHTML;
+    } else {
+      docInner = el.doc.innerHTML;
+    }
+    var toggleScript = isToggle
+      ? "\n<script>document.addEventListener('click',function(e){var h=e.target.closest&&e.target.closest('.toggle-head');if(!h)return;var s=h.closest('.toggle-sec');if(!s)return;var c=s.classList.toggle('collapsed');h.setAttribute('aria-expanded',String(!c));});<\/script>"
+      : "";
+    var html =
+      "<!doctype html>\n<html lang=\"ja\">\n<head>\n<meta charset=\"utf-8\">\n" +
+      "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n" +
+      "<title>" + escHtml(title) + "</title>\n<style>\n" +
+      ":root{" + rootVars + "}\n" +
+      "body{margin:0;background:#EDEBE6;padding:40px 16px;display:flex;justify-content:center}\n" +
+      css + "\n</style>\n</head>\n<body>\n" +
+      "<div class=\"sheet\"><article class=\"" + escHtml(docClass) + "\" style=\"" + escHtml(docStyle) + "\">" +
+      docInner + "</article></div>" + toggleScript + "\n</body>\n</html>";
+    var blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = (title.replace(/[\\/:*?"<>|\s]+/g, "_").slice(0, 40) || "document") + ".html";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+    toast("HTML を書き出しました");
+  }
+
+  // ---- ファイル読み込み（文字コード自動判別）----
+  function decodeText(buf){
+    var b = new Uint8Array(buf);
+    if(b.length >= 2 && b[0] === 0xFF && b[1] === 0xFE) return { text: new TextDecoder("utf-16le").decode(b), enc: "UTF-16LE" };
+    if(b.length >= 2 && b[0] === 0xFE && b[1] === 0xFF) return { text: new TextDecoder("utf-16be").decode(b), enc: "UTF-16BE" };
+    var hasBom = b.length >= 3 && b[0] === 0xEF && b[1] === 0xBB && b[2] === 0xBF;
+    try {
+      // BOM有無に関わらず妥当なUTF-8ならこちら（不正バイトがあれば例外）
+      return { text: new TextDecoder("utf-8", { fatal: true }).decode(b), enc: hasBom ? "UTF-8 (BOM)" : "UTF-8" };
+    } catch(e){
+      try {
+        // Windowsの日本語ファイルで多いShift_JIS(CP932)へフォールバック
+        return { text: new TextDecoder("shift_jis", { fatal: false }).decode(b), enc: "Shift_JIS" };
+      } catch(e2){
+        return { text: new TextDecoder("utf-8", { fatal: false }).decode(b), enc: "UTF-8?" };
+      }
+    }
+  }
+  function readFile(f){
+    var r = new FileReader();
+    r.onload = function(){
+      var d = decodeText(r.result);
+      el.input.value = d.text;
+      toast(f.name + " を読み込みました（" + d.enc + "）");
+    };
+    r.onerror = function(){ toast("ファイルを読み込めませんでした"); };
+    r.readAsArrayBuffer(f);
+  }
+
+  // ---- サンプル ----
+  var SAMPLE = ((document.getElementById("sampleMd") || {}).textContent || "").replace(/^\n+/, "").replace(/\s+$/, "");
+
+  // ---- イベント ----
+  el.btnCompose.addEventListener("click", formatInput);
+  el.btnSample.addEventListener("click", function(){ el.input.value = SAMPLE; toast("サンプルを読み込みました"); });
+  el.btnSample2.addEventListener("click", function(){ el.input.value = SAMPLE; formatInput(); });
+  el.btnClear.addEventListener("click", function(){ el.input.value = ""; el.input.focus(); });
+  el.btnPdf.addEventListener("click", function(){ if(el.sheet.hidden){ toast("先に整えてください"); return; } window.print(); });
+  el.btnHtml.addEventListener("click", exportHtml);
+  el.file.addEventListener("change", function(e){ var f = e.target.files[0]; if(f) readFile(f); e.target.value = ""; });
+
+  el.fontPicker.addEventListener("click", function(e){
+    var b = e.target.closest("[data-font]"); if(!b) return;
+    if(el.sheet.hidden){ toast("先に整えてください"); return; }
+    setDocFont(b.getAttribute("data-font"));
+  });
+  el.swatches.addEventListener("click", function(e){
+    var b = e.target.closest("[data-accent]"); if(!b) return;
+    if(el.sheet.hidden){ toast("先に整えてください"); return; }
+    setDocAccent(b.getAttribute("data-accent"), b.getAttribute("data-name"));
+  });
+  if(el.customColor){
+    el.customColor.addEventListener("input", function(e){
+      if(el.sheet.hidden) return;
+      setDocAccent(e.target.value, "カスタム");
+    });
+  }
+  // ===== テーマのカスタムドロップダウン =====
+  var dropActive = -1; // キーボード操作中のハイライト位置
+  (function buildThemeDropdown(){
+    THEME_OPTIONS.forEach(function(opt){
+      var li = document.createElement("li");
+      li.className = "cdrop-opt";
+      li.setAttribute("role", "option");
+      li.setAttribute("data-value", opt.value);
+      li.setAttribute("aria-selected", "false");
+      var name = document.createElement("span");
+      name.className = "cdrop-opt-name"; name.textContent = opt.value;
+      var desc = document.createElement("span");
+      desc.className = "cdrop-opt-desc"; desc.textContent = opt.desc;
+      li.appendChild(name); li.appendChild(desc);
+      el.themeDropList.appendChild(li);
+    });
+  })();
+  function dropIsOpen(){ return !el.themeDropList.hidden; }
+  function setDropActive(i){
+    var opts = el.themeDropList.children;
+    if(dropActive >= 0 && opts[dropActive]) opts[dropActive].classList.remove("active");
+    dropActive = Math.max(0, Math.min(i, opts.length - 1));
+    var cur = opts[dropActive];
+    if(cur){ cur.classList.add("active"); cur.scrollIntoView({ block: "nearest" }); }
+  }
+  function openDrop(){
+    if(el.themeDropBtn.disabled || dropIsOpen()) return;
+    el.themeDropList.hidden = false;
+    el.themeDropBtn.setAttribute("aria-expanded", "true");
+    // 現在の選択にハイライトを合わせる
+    var sel = -1, opts = el.themeDropList.children;
+    for(var i = 0; i < opts.length; i++){ if(opts[i].getAttribute("aria-selected") === "true") sel = i; }
+    dropActive = -1; setDropActive(sel >= 0 ? sel : 0);
+    document.addEventListener("mousedown", onDropOutside, true);
+  }
+  function closeDrop(){
+    if(!dropIsOpen()) return;
+    el.themeDropList.hidden = true;
+    el.themeDropBtn.setAttribute("aria-expanded", "false");
+    var opts = el.themeDropList.children;
+    if(dropActive >= 0 && opts[dropActive]) opts[dropActive].classList.remove("active");
+    dropActive = -1;
+    document.removeEventListener("mousedown", onDropOutside, true);
+  }
+  function onDropOutside(e){ if(!el.themeDrop.contains(e.target)) closeDrop(); }
+  function chooseDrop(val){ closeDrop(); el.themeDropBtn.focus(); applyTypePreset(val); }
+
+  el.themeDropBtn.addEventListener("click", function(){ dropIsOpen() ? closeDrop() : openDrop(); });
+  el.themeDropList.addEventListener("click", function(e){
+    var li = e.target.closest(".cdrop-opt"); if(!li) return;
+    chooseDrop(li.getAttribute("data-value"));
+  });
+  el.themeDropBtn.addEventListener("keydown", function(e){
+    if(!dropIsOpen()){
+      if(e.key === "ArrowDown" || e.key === "Enter" || e.key === " "){ e.preventDefault(); openDrop(); }
+      return;
+    }
+    if(e.key === "ArrowDown"){ e.preventDefault(); setDropActive(dropActive + 1); }
+    else if(e.key === "ArrowUp"){ e.preventDefault(); setDropActive(dropActive - 1); }
+    else if(e.key === "Home"){ e.preventDefault(); setDropActive(0); }
+    else if(e.key === "End"){ e.preventDefault(); setDropActive(el.themeDropList.children.length - 1); }
+    else if(e.key === "Enter" || e.key === " "){
+      e.preventDefault();
+      var cur = el.themeDropList.children[dropActive];
+      if(cur) chooseDrop(cur.getAttribute("data-value"));
+    }
+    else if(e.key === "Escape"){ e.preventDefault(); closeDrop(); }
+  });
+
+  // 折りたたみテーマ：見出しクリック／Enter・Spaceで開閉
+  el.doc.addEventListener("click", function(e){
+    var head = e.target.closest && e.target.closest(".toggle-head");
+    if(!head) return;
+    var sec = head.closest(".toggle-sec");
+    if(!sec) return;
+    var collapsed = sec.classList.toggle("collapsed");
+    head.setAttribute("aria-expanded", String(!collapsed));
+  });
+  el.doc.addEventListener("keydown", function(e){
+    if(e.key !== "Enter" && e.key !== " ") return;
+    var head = e.target.closest && e.target.closest(".toggle-head");
+    if(!head) return;
+    e.preventDefault();
+    head.click();
+  });
+  el.segToc.addEventListener("click", function(e){
+    var b = e.target.closest("[data-toc]"); if(!b || b.disabled) return;
+    setShowToc(b.getAttribute("data-toc") === "true");
+  });
+
+  ["dragover", "dragenter"].forEach(function(ev){
+    el.input.addEventListener(ev, function(e){ e.preventDefault(); el.input.classList.add("drag"); });
+  });
+  ["dragleave", "dragend"].forEach(function(ev){
+    el.input.addEventListener(ev, function(e){ e.preventDefault(); el.input.classList.remove("drag"); });
+  });
+  el.input.addEventListener("drop", function(e){
+    e.preventDefault(); el.input.classList.remove("drag");
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if(f) readFile(f);
+  });
+
+  // Ctrl/Cmd + Enter で整える
+  el.input.addEventListener("keydown", function(e){
+    if((e.metaKey || e.ctrlKey) && e.key === "Enter"){ e.preventDefault(); formatInput(); }
+  });
+});
+</script>
+</body>
+</html>
