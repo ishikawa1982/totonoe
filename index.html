@@ -589,9 +589,9 @@ label.btn{display:inline-flex; align-items:center}
 # ととのえ 設計書
 
 > [!ポイント]
-> 本書は Markdown 自動整形ツール **「ととのえ」** の設計書です。この文書自体がサンプルを兼ねており、**見出し・表・コードブロック・コールアウト・チェックリスト**など多様な記法で、自動整形の実力を一望できます。
+> 本書は Markdown 自動整形ツール **「ととのえ」** の設計書です。この文書自体がサンプルを兼ねており、**見出し・表・コードブロック・コールアウト・チェックリスト**など多様な記法で、自動整形の実力を一望できます。画面の **「サンプル」** ボタンを押すと、この `DESIGN.md` をその場で読み込んで整形します。
 
-最終更新：2026-06-26 ／ 区分：*内部設計資料*
+最終更新：2026-06-28 ／ 区分：*内部設計資料*
 
 ---
 
@@ -740,6 +740,12 @@ Start-Process ".\totonoe.html"
 
 > 設定の変更は再解析なしで即時に反映されます。プレビューを見ながら最終調整できます。
 
+### 4.2 ヘッダーと初期化
+
+- ヘッダー左のロゴは、行が揃う様子を表した **整列ラインのアイコン**（朱色）です。ファビコンにも同じ図柄を使用しています。
+- タイトル **「ととのえ」** をクリックすると、入力・プレビュー・微調整がすべて初期状態に戻ります。
+- 画面は必要最小限の要素にとどめ、補助的な説明文は省いています。
+
 ---
 
 ## 5. 処理フロー
@@ -749,6 +755,7 @@ Start-Process ".\totonoe.html"
 3. 内容を解析し、テーマ・配色・フォント・目次を自動決定
 4. プレビューへ反映
 5. 必要に応じて微調整し、**PDF** または **HTML** で書き出す
+6. やり直す場合はタイトル **「ととのえ」** をクリックして初期状態へ戻す
 
 ---
 
@@ -764,10 +771,6 @@ Start-Process ".\totonoe.html"
 - [ ] テーマのユーザー定義
 - [ ] 図表番号の自動付与
 - [ ] 図表記法（Mermaid 等）のレンダリング
-
----
-
-詳細は [プロジェクトの README](#readme) と [変更履歴](#changelog) を参照してください。不明点は社内チャットまで。
 </script>
 
 <script>
@@ -1191,7 +1194,16 @@ document.addEventListener("DOMContentLoaded", function(){
   }
 
   // ---- サンプル ----
-  var SAMPLE = ((document.getElementById("sampleMd") || {}).textContent || "").replace(/^\n+/, "").replace(/\s+$/, "");
+  // 控え（埋め込み）。fetch が使えない場合（file:// やオフライン）に使用する
+  var SAMPLE_FALLBACK = ((document.getElementById("sampleMd") || {}).textContent || "").replace(/^\n+/, "").replace(/\s+$/, "");
+  // 押下のたびに最新の DESIGN.md を取得。失敗時は控えを返す
+  function loadSample(then){
+    if(typeof fetch !== "function"){ then(SAMPLE_FALLBACK); return; }
+    fetch("DESIGN.md", { cache: "no-store" })
+      .then(function(r){ if(!r.ok) throw new Error(String(r.status)); return r.text(); })
+      .then(function(t){ then(t.replace(/^\n+/, "").replace(/\s+$/, "")); })
+      .catch(function(){ then(SAMPLE_FALLBACK); });
+  }
 
   // ---- 初期状態へ戻す（左右ペインをクリア）----
   function resetApp(){
@@ -1212,8 +1224,8 @@ document.addEventListener("DOMContentLoaded", function(){
 
   // ---- イベント ----
   el.btnCompose.addEventListener("click", formatInput);
-  el.btnSample.addEventListener("click", function(){ el.input.value = SAMPLE; toast("サンプルを読み込みました"); });
-  el.btnSample2.addEventListener("click", function(){ el.input.value = SAMPLE; formatInput(); });
+  el.btnSample.addEventListener("click", function(){ loadSample(function(md){ el.input.value = md; toast("サンプルを読み込みました"); }); });
+  el.btnSample2.addEventListener("click", function(){ loadSample(function(md){ el.input.value = md; formatInput(); }); });
   el.btnClear.addEventListener("click", function(){ el.input.value = ""; el.input.focus(); });
   // タイトル「ととのえ」クリック／Enter・Spaceで初期ページへ
   var brandHome = document.getElementById("brandHome");
