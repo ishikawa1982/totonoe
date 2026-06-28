@@ -29,6 +29,8 @@
   --radius:10px;
 }
 *{box-sizing:border-box}
+/* hidden 属性を確実に効かせる（.spec/.actions の display:flex に打ち消されないように）*/
+[hidden]{display:none !important}
 html,body{height:100%}
 body{
   margin:0; background:var(--desk); color:var(--ink);
